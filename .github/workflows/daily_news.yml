@@ -1,0 +1,36 @@
+name: Daily AI News Crawler
+
+on:
+  schedule:
+    # 設定每天 UTC 時間 00:00 執行 (台灣時間早上 8:00)
+    - cron: '0 0 * * *'
+  # 允許手動按按鈕執行 (方便測試)
+  workflow_dispatch:
+
+jobs:
+  run_crawler:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out code (下載程式碼)
+      uses: actions/checkout@v4
+
+    - name: Set up Python (安裝 Python)
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies (安裝套件)
+      run: |
+        python -m pip install --upgrade pip
+        pip install supabase openai requests beautifulsoup4 python-dotenv
+
+    - name: Run ETL Script (執行抓新聞)
+      env:
+        - name: Run ETL Script (執行抓新聞)
+          env:
+            SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+            SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+            # 👇 修改這一行，變數名稱要跟 Python 裡寫的一模一樣
+            GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          run: python etl_worker.py

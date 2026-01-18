@@ -1,0 +1,18 @@
+# 忽略系統垃圾
+.DS_Store
+Thumbs.db
+
+# 忽略 Python 快取
+__pycache__/
+*.py[cod]
+venv/
+
+# 忽略 Node.js 巨量套件 (這絕對不能傳！)
+node_modules/
+.next/
+out/
+build/
+
+# 忽略環境變數檔 (保護密碼)
+.env
+.env.local
