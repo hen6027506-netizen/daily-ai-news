@@ -18,7 +18,8 @@ if not SUPABASE_URL or not SUPABASE_KEY or not GOOGLE_API_KEY:
 # 初始化
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash') # 👈 使用免費且快速的模型
+# ✅ 修改後 (使用最穩定的標準版)
+model = genai.GenerativeModel('gemini-pro')
 
 # === 2. 爬蟲函數 ===
 def fetch_latest_news():
