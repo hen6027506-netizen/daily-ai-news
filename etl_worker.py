@@ -4,12 +4,12 @@ import json
 import time
 from bs4 import BeautifulSoup
 from supabase import create_client, Client
-import google.generativeai as genai # 👈 換成 Google 套件
+import google.generativeai as genai
 
 # === 1. 設定與連線 ===
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY") # 👈 讀取 Google Key
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY or not GOOGLE_API_KEY:
     print("❌ 錯誤：找不到環境變數 (請檢查 GitHub Secrets)")
@@ -18,8 +18,36 @@ if not SUPABASE_URL or not SUPABASE_KEY or not GOOGLE_API_KEY:
 # 初始化
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GOOGLE_API_KEY)
-# ✅ 修改後 (使用最穩定的標準版)
-model = genai.GenerativeModel('gemini-pro')
+
+# === 🛡️ 智慧模型選擇器 (Smart Model Selector) ===
+print("🔍 正在檢查您的 API Key 權限與可用模型...")
+target_model = None
+try:
+    available_models = []
+    for m in genai.list_models():
+        if 'generateContent' in m.supported_generation_methods:
+            available_models.append(m.name)
+            print(f" - 發現可用模型: {m.name}")
+    
+    # 自動挑選最佳模型
+    if "models/gemini-1.5-flash" in available_models:
+        target_model = "models/gemini-1.5-flash"
+    elif "models/gemini-pro" in available_models:
+        target_model = "models/gemini-pro"
+    elif available_models:
+        target_model = available_models[0] # 沒魚蝦也好，抓第一個
+        
+except Exception as e:
+    print(f"❌ 無法連線到 Google AI (API Key 可能未啟用 Generative Language API): {e}")
+
+if not target_model:
+    print("⚠️ 嚴重錯誤：找不到任何可用的 Gemini 模型！程式將嘗試強制使用 gemini-pro...")
+    target_model = "models/gemini-pro"
+else:
+    print(f"✅ 成功選定模型: {target_model}")
+
+model = genai.GenerativeModel(target_model)
+# ===========================================
 
 # === 2. 爬蟲函數 ===
 def fetch_latest_news():
@@ -30,12 +58,12 @@ def fetch_latest_news():
         soup = BeautifulSoup(response.text, "html.parser")
         articles = []
         
-        # 抓取前 3 篇新聞 (避免額度用完)
+        # 抓取前 3 篇
         for item in soup.select(".loop-card__title a")[:3]:
             title = item.get_text().strip()
             link = item.get("href")
             
-            # 簡單防重覆檢查
+            # 防重覆檢查
             existing = supabase.table("news_items").select("id").eq("original_url", link).execute()
             if not existing.data:
                 articles.append({"title": title, "url": link})
@@ -46,9 +74,9 @@ def fetch_latest_news():
         print(f"❌ 爬蟲失敗: {e}")
         return []
 
-# === 3. AI 分析函數 (Google 版) ===
+# === 3. AI 分析函數 ===
 def analyze_with_gemini(text):
-    print("🤖 AI 正在閱讀...")
+    print(f"🤖 AI 正在閱讀 (使用 {target_model})...")
     prompt = f"""
     你是專業的科技新聞編輯。請閱讀以下新聞內容，並輸出純 JSON 格式的分析結果。
     
@@ -67,10 +95,7 @@ def analyze_with_gemini(text):
     try:
         response = model.generate_content(prompt)
         content = response.text
-        
-        # 清理 Gemini 可能會輸出的 Markdown 符號
         content = content.replace("```json", "").replace("```", "").strip()
-        
         return json.loads(content)
     except Exception as e:
         print(f"❌ AI 分析失敗: {e}")
@@ -83,7 +108,6 @@ def main():
     for news in news_list:
         print(f"處理中: {news['title']}")
         
-        # 1. 存入 news_items
         news_data = {
             "title": news['title'],
             "source_name": "TechCrunch",
@@ -93,11 +117,9 @@ def main():
         result = supabase.table("news_items").insert(news_data).execute()
         news_id = result.data[0]['id']
         
-        # 2. 進行 AI 分析
-        ai_result = analyze_with_gemini(news['title']) # 簡單測試用標題分析
+        ai_result = analyze_with_gemini(news['title']) 
         
         if ai_result:
-            # 3. 存入 ai_analysis
             analysis_data = {
                 "news_id": news_id,
                 "summary_short": ai_result.get("summary_short"),
