@@ -66,7 +66,7 @@ def fetch_all_news():
                         "url": link,
                         "source_name": source['name']
                     })
-        except Exception as e: # 👈 這裡補上了漏掉的 except 區塊！
+        except Exception as e:  # 👈 這就是之前漏掉的關鍵救命符！
             print(f"❌ 抓取 {source['name']} 發生錯誤: {e}")
     
     print(f"🎉 巡邏完畢，共發現 {len(all_articles)} 篇新文章")
