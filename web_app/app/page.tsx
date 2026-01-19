@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-// === ⚠️ 請確認這裡還是你自己的 Key ===
+// === ⚠️ 請確認這裡填入你自己的 Key ===
 const SUPABASE_URL = 'https://gujepdwzojlclwngcvxr.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd1amVwZHd6b2psY2x3bmdjdnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg3NDc0MTQsImV4cCI6MjA4NDMyMzQxNH0.LeHWeq0xhenh94RWmQGYI23JM1myM6HCWBusXHU8G00';
 
@@ -26,13 +26,15 @@ interface Article {
 export default function Home() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [category, setCategory] = useState('all');
-  const [searchTerm, setSearchTerm] = useState(''); // 🔍 新增搜尋狀態
+  const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  
+  // 🔊 新增：用來記錄目前「正在說話」的新聞 ID
+  const [speakingId, setSpeakingId] = useState<number | null>(null);
 
   // 1. 抓取新聞
   useEffect(() => {
     const fetchNews = async () => {
-      // 改用 .from() 確保語法正確
       const { data, error } = await supabase
         .from('news_items')
         .select('*, ai_analysis(*)')
@@ -44,14 +46,51 @@ export default function Home() {
       setLoading(false);
     };
     fetchNews();
+
+    // 離開頁面時停止朗讀
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.speechSynthesis.cancel();
+      }
+    };
   }, []);
 
-  // 2. 雙重篩選邏輯 (分類 + 搜尋關鍵字)
+  // 🔊 新增：語音朗讀控制函數
+  const toggleSpeech = (id: number, text: string) => {
+    if (!window.speechSynthesis) {
+      alert("你的瀏覽器不支援語音朗讀功能");
+      return;
+    }
+
+    // 如果點擊的是正在讀的那一篇 -> 停止
+    if (speakingId === id) {
+      window.speechSynthesis.cancel();
+      setSpeakingId(null);
+      return;
+    }
+
+    // 先停止目前任何正在讀的聲音
+    window.speechSynthesis.cancel();
+
+    // 設定要讀的內容
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'zh-TW'; // 設定語言為繁體中文
+    utterance.rate = 1;       // 語速 (1 是正常)
+    utterance.pitch = 1;      // 音調
+
+    // 當讀完的時候，把 icon 變回喇叭
+    utterance.onend = () => {
+      setSpeakingId(null);
+    };
+
+    // 開始朗讀
+    window.speechSynthesis.speak(utterance);
+    setSpeakingId(id);
+  };
+
+  // 2. 篩選邏輯
   const filteredArticles = articles.filter(item => {
-    // A. 先過濾分類
     const matchCategory = category === 'all' || item.category === category;
-    
-    // B. 再過濾關鍵字 (搜尋標題、摘要或標籤)
     const searchLower = searchTerm.toLowerCase();
     const analysis = item.ai_analysis?.[0];
     const matchSearch = searchTerm === '' || 
@@ -73,7 +112,6 @@ export default function Home() {
       `}</style>
 
       <div className="max-w-4xl mx-auto px-5 py-10">
-        {/* Header */}
         <header className="text-center mb-8 border-b-4 border-double border-[#2c2c2c] pb-5">
           <h1 className="font-playfair text-5xl md:text-6xl mb-2 tracking-tight">The Daily Insight</h1>
           <div className="text-sm text-gray-500 uppercase tracking-widest font-sans">
@@ -81,10 +119,7 @@ export default function Home() {
           </div>
         </header>
 
-        {/* 🔍 搜尋框與導航列區域 */}
         <div className="sticky top-0 z-10 bg-[#fcfbf9]/95 backdrop-blur-sm py-4 mb-8 border-b border-gray-200">
-          
-          {/* 搜尋輸入框 */}
           <div className="max-w-md mx-auto mb-4 relative">
             <input
               type="text"
@@ -95,7 +130,6 @@ export default function Home() {
             />
           </div>
 
-          {/* 分類按鈕 */}
           <nav className="flex flex-wrap justify-center gap-4 font-sans">
             {['all', '科技', '財經', '科學', '生活'].map((cat) => (
               <button
@@ -113,7 +147,6 @@ export default function Home() {
           </nav>
         </div>
 
-        {/* News List */}
         <main>
           {loading ? (
             <p className="text-center text-gray-400 mt-10">正在載入歷史庫...</p>
@@ -128,17 +161,36 @@ export default function Home() {
             filteredArticles.map((item) => {
               const analysis = item.ai_analysis?.[0] || { summary_short: "AI 正在消化這篇文章...", sentiment_score: 0, tags: [] };
               const moodWidth = Math.max(10, (analysis.sentiment_score + 1) * 50);
+              
+              // 判斷這一篇是不是正在朗讀中
+              const isSpeaking = speakingId === item.id;
 
               return (
                 <div key={item.id} className="news-card mb-12 pb-8 border-b border-gray-200">
-                  <h2 className="font-playfair text-3xl mb-3 leading-tight hover:text-[#2a9d8f] transition-colors">
-                    <a href={item.original_url} target="_blank" rel="noopener noreferrer">
-                      {item.title}
-                    </a>
-                  </h2>
-                  <div className="text-xs font-bold text-gray-500 uppercase mb-4 tracking-wide font-sans">
-                    {item.source_name} • {item.published_at}
+                  <div className="flex justify-between items-start mb-3">
+                    <h2 className="font-playfair text-3xl leading-tight hover:text-[#2a9d8f] transition-colors flex-1">
+                      <a href={item.original_url} target="_blank" rel="noopener noreferrer">
+                        {item.title}
+                      </a>
+                    </h2>
                   </div>
+
+                  <div className="text-xs font-bold text-gray-500 uppercase mb-4 tracking-wide font-sans flex items-center justify-between">
+                    <span>{item.source_name} • {item.published_at}</span>
+                    
+                    {/* 🔊 朗讀按鈕 */}
+                    <button 
+                      onClick={() => toggleSpeech(item.id, analysis.summary_short)}
+                      className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs transition-all border
+                        ${isSpeaking 
+                          ? 'bg-[#2a9d8f] text-white border-[#2a9d8f] animate-pulse' 
+                          : 'bg-white text-gray-500 border-gray-300 hover:border-[#2a9d8f] hover:text-[#2a9d8f]'
+                        }`}
+                    >
+                      {isSpeaking ? '⏹️ 停止朗讀' : '🔈 朗讀摘要'}
+                    </button>
+                  </div>
+
                   <div className="bg-[#f4f4f4] p-5 border-l-4 border-[#2a9d8f] text-lg text-gray-700 mb-4 font-noto leading-relaxed">
                     {analysis.summary_short}
                   </div>
