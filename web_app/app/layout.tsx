@@ -1,23 +1,23 @@
-import type { Metadata } from "next";
-import { Noto_Serif_TC, Inter } from "next/font/google";
+import type { Metadata, Viewport } from "next"; // 👈 記得引入 Viewport
 import "./globals.css";
 
-// 1. 引入 Google Fonts (宋體與無襯線體)
-const serif = Noto_Serif_TC({ 
-  subsets: ["latin"], 
-  weight: ["400", "700"],
-  variable: "--font-serif",
-  preload: false, 
-});
+// 1. 新增這個 Viewport 設定 (讓手機版面更穩定)
+export const viewport: Viewport = {
+  themeColor: "#fcfbf9",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+};
 
-const sans = Inter({ 
-  subsets: ["latin"],
-  variable: "--font-sans",
-});
-
+// 2. 修改 Metadata，加入 manifest
 export const metadata: Metadata = {
-  title: "Daily AI Insight",
-  description: "每日 AI 重點摘要",
+  title: "The Daily Insight",
+  description: "AI Curated Daily News",
+  manifest: "/manifest.json", // 👈 關鍵就是加這一行！
+  icons: {
+    icon: "/icon.png",        // 👈 還有這裡
+    apple: "/icon.png",
+  },
 };
 
 export default function RootLayout({
@@ -26,11 +26,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-TW">
-      {/* 2. 在這裡套用我們定義的顏色與字體變數 */}
-      <body className={`${serif.variable} ${sans.variable} font-serif bg-paper text-ink antialiased`}>
-        {children}
-      </body>
+    <html lang="zh-Hant">
+      <body>{children}</body>
     </html>
   );
 }
