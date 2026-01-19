@@ -22,7 +22,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         # 👇 注意：這裡改成安裝 google-generativeai
-        pip install supabase google-generativeai requests beautifulsoup4 python-dotenv
+        pip install supabase google-generativeai requests beautifulsoup4 python-dotenv lxml
 
     - name: Run ETL Script (執行抓新聞)
       env:
