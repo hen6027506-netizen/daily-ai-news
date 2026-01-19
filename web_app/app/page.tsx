@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 // === ⚠️ 請在這裡填入你的 Supabase 連線資訊 ===
-const SUPABASE_URL = '你的_SUPABASE_URL_貼在這裡';
-const SUPABASE_KEY = '你的_SUPABASE_ANON_KEY_貼在這裡';
+const SUPABASE_URL = 'https://gujepdwzojlclwngcvxr.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd1amVwZHd6b2psY2x3bmdjdnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg3NDc0MTQsImV4cCI6MjA4NDMyMzQxNH0.LeHWeq0xhenh94RWmQGYI23JM1myM6HCWBusXHU8G00';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -32,7 +32,7 @@ export default function Home() {
   useEffect(() => {
     const fetchNews = async () => {
       const { data, error } = await supabase
-        .table('news_items')
+        .from('news_items')
         .select('*, ai_analysis(*)')
         .order('created_at', { ascending: false });
 
