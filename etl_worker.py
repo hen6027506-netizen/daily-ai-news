@@ -19,7 +19,6 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GOOGLE_API_KEY)
 
 # === 🛡️ 模型設定 (強制使用 1.5-flash) ===
-# 這裡直接寫死，絕對不讓它去檢查其他模型
 target_model = "models/gemini-1.5-flash" 
 print(f"🔒 強制鎖定模型: {target_model}")
 model = genai.GenerativeModel(target_model)
@@ -67,6 +66,8 @@ def fetch_all_news():
                         "url": link,
                         "source_name": source['name']
                     })
+        except Exception as e: # 👈 這裡補上了漏掉的 except 區塊！
+            print(f"❌ 抓取 {source['name']} 發生錯誤: {e}")
     
     print(f"🎉 巡邏完畢，共發現 {len(all_articles)} 篇新文章")
     return all_articles
