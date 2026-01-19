@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-// === ⚠️ 請在這裡填入你的 Supabase 連線資訊 ===
+// === ⚠️ 請確認這裡還是你自己的 Key ===
 const SUPABASE_URL = 'https://gujepdwzojlclwngcvxr.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd1amVwZHd6b2psY2x3bmdjdnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg3NDc0MTQsImV4cCI6MjA4NDMyMzQxNH0.LeHWeq0xhenh94RWmQGYI23JM1myM6HCWBusXHU8G00';
 
@@ -26,11 +26,13 @@ interface Article {
 export default function Home() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [category, setCategory] = useState('all');
+  const [searchTerm, setSearchTerm] = useState(''); // 🔍 新增搜尋狀態
   const [loading, setLoading] = useState(true);
 
   // 1. 抓取新聞
   useEffect(() => {
     const fetchNews = async () => {
+      // 改用 .from() 確保語法正確
       const { data, error } = await supabase
         .from('news_items')
         .select('*, ai_analysis(*)')
@@ -44,14 +46,24 @@ export default function Home() {
     fetchNews();
   }, []);
 
-  // 2. 篩選邏輯
-  const filteredArticles = category === 'all' 
-    ? articles 
-    : articles.filter(item => item.category === category);
+  // 2. 雙重篩選邏輯 (分類 + 搜尋關鍵字)
+  const filteredArticles = articles.filter(item => {
+    // A. 先過濾分類
+    const matchCategory = category === 'all' || item.category === category;
+    
+    // B. 再過濾關鍵字 (搜尋標題、摘要或標籤)
+    const searchLower = searchTerm.toLowerCase();
+    const analysis = item.ai_analysis?.[0];
+    const matchSearch = searchTerm === '' || 
+      item.title.toLowerCase().includes(searchLower) ||
+      analysis?.summary_short?.toLowerCase().includes(searchLower) || 
+      analysis?.tags?.some(tag => tag.toLowerCase().includes(searchLower));
+
+    return matchCategory && matchSearch;
+  });
 
   return (
     <div className="min-h-screen bg-[#fcfbf9] text-[#2c2c2c] font-serif">
-      {/* CSS Styles (為了保持設計一致，我們直接寫在這裡) */}
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Noto+Serif+TC:wght@400;700&family=Lato:wght@400;700&display=swap');
         .font-playfair { font-family: 'Playfair Display', serif; }
@@ -62,36 +74,56 @@ export default function Home() {
 
       <div className="max-w-4xl mx-auto px-5 py-10">
         {/* Header */}
-        <header className="text-center mb-10 border-b-4 border-double border-[#2c2c2c] pb-5">
+        <header className="text-center mb-8 border-b-4 border-double border-[#2c2c2c] pb-5">
           <h1 className="font-playfair text-5xl md:text-6xl mb-2 tracking-tight">The Daily Insight</h1>
           <div className="text-sm text-gray-500 uppercase tracking-widest font-sans">
             AI Curated • {new Date().toLocaleDateString()} • Vol. 1
           </div>
         </header>
 
-        {/* Navigation */}
-        <nav className="flex flex-wrap justify-center gap-4 mb-10 font-sans">
-          {['all', '科技', '財經', '科學', '生活'].map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setCategory(cat)}
-              className={`px-3 py-1 text-sm uppercase tracking-wider transition-all border-b-2 
-                ${category === cat 
-                  ? 'border-[#2a9d8f] text-black font-bold' 
-                  : 'border-transparent text-gray-500 hover:text-black hover:border-gray-300'
-                }`}
-            >
-              {cat === 'all' ? '全部 All' : cat}
-            </button>
-          ))}
-        </nav>
+        {/* 🔍 搜尋框與導航列區域 */}
+        <div className="sticky top-0 z-10 bg-[#fcfbf9]/95 backdrop-blur-sm py-4 mb-8 border-b border-gray-200">
+          
+          {/* 搜尋輸入框 */}
+          <div className="max-w-md mx-auto mb-4 relative">
+            <input
+              type="text"
+              placeholder="🔍 搜尋新聞關鍵字..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-4 py-2 rounded-full border border-gray-300 focus:border-[#2a9d8f] focus:outline-none focus:ring-1 focus:ring-[#2a9d8f] bg-white font-sans text-center transition-all"
+            />
+          </div>
+
+          {/* 分類按鈕 */}
+          <nav className="flex flex-wrap justify-center gap-4 font-sans">
+            {['all', '科技', '財經', '科學', '生活'].map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setCategory(cat)}
+                className={`px-3 py-1 text-sm uppercase tracking-wider transition-all border-b-2 
+                  ${category === cat 
+                    ? 'border-[#2a9d8f] text-black font-bold' 
+                    : 'border-transparent text-gray-500 hover:text-black hover:border-gray-300'
+                  }`}
+              >
+                {cat === 'all' ? '全部 All' : cat}
+              </button>
+            ))}
+          </nav>
+        </div>
 
         {/* News List */}
         <main>
           {loading ? (
-            <p className="text-center text-gray-400 mt-10">正在載入來自全世界的洞察...</p>
+            <p className="text-center text-gray-400 mt-10">正在載入歷史庫...</p>
           ) : filteredArticles.length === 0 ? (
-            <p className="text-center text-gray-400 mt-10">目前這個分類沒有新聞。</p>
+            <div className="text-center py-10">
+              <p className="text-gray-400 mb-2">沒有找到相關文章</p>
+              <button onClick={() => {setSearchTerm(''); setCategory('all');}} className="text-[#2a9d8f] underline text-sm">
+                清除搜尋條件
+              </button>
+            </div>
           ) : (
             filteredArticles.map((item) => {
               const analysis = item.ai_analysis?.[0] || { summary_short: "AI 正在消化這篇文章...", sentiment_score: 0, tags: [] };
