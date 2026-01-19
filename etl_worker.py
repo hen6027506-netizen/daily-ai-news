@@ -18,7 +18,7 @@ if not SUPABASE_URL or not SUPABASE_KEY or not GOOGLE_API_KEY:
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GOOGLE_API_KEY)
 
-target_model = "models/gemini-flash-latest" 
+target_model = "models/gemini-2.5-flash" 
 print(f"🔒 強制鎖定模型: {target_model}")
 model = genai.GenerativeModel(target_model)
 
@@ -103,8 +103,8 @@ def main():
 
     for i, art in enumerate(articles):
         if i > 0:
-            print("☕ 休息 5 秒...")
-            time.sleep(5)
+            print("☕ 休息 25 秒...")
+            time.sleep(25)
 
         news_data = {
             "title": art['title'],
