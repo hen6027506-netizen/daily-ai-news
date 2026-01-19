@@ -19,7 +19,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GOOGLE_API_KEY)
 
 # === 🛡️ 模型設定 (強制使用 1.5-flash) ===
-target_model = "models/gemini-1.5-flash" 
+target_model = "models/gemini-flash-latest" 
 print(f"🔒 強制鎖定模型: {target_model}")
 model = genai.GenerativeModel(target_model)
 
