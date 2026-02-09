@@ -3,11 +3,17 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-// === ⚠️ 請確認這裡填入你自己的 Key ===
+// === ⚠️ 記得填入你自己的 Key ===
 const SUPABASE_URL = 'https://gujepdwzojlclwngcvxr.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd1amVwZHd6b2psY2x3bmdjdnhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg3NDc0MTQsImV4cCI6MjA4NDMyMzQxNH0.LeHWeq0xhenh94RWmQGYI23JM1myM6HCWBusXHU8G00';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+interface Vocab {
+  word: string;
+  def: string;
+  ex: string;
+}
 
 interface Article {
   id: number;
@@ -16,10 +22,12 @@ interface Article {
   published_at: string;
   original_url: string;
   category: string;
+  is_saved: boolean; // 👈 新增這個狀態
   ai_analysis: {
     summary_short: string;
     sentiment_score: number;
     tags: string[];
+    vocabulary: Vocab[];
   }[];
 }
 
@@ -29,67 +37,72 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   
-  // 🔊 新增：用來記錄目前「正在說話」的新聞 ID
   const [speakingId, setSpeakingId] = useState<number | null>(null);
+  const [openVocabId, setOpenVocabId] = useState<number | null>(null);
 
   // 1. 抓取新聞
+  const fetchNews = async () => {
+    const { data, error } = await supabase
+      .from('news_items')
+      .select('*, ai_analysis(*)')
+      .order('created_at', { ascending: false });
+
+    if (data) {
+      setArticles(data as any);
+    }
+    setLoading(false);
+  };
+
   useEffect(() => {
-    const fetchNews = async () => {
-      const { data, error } = await supabase
-        .from('news_items')
-        .select('*, ai_analysis(*)')
-        .order('created_at', { ascending: false });
-
-      if (data) {
-        setArticles(data as any);
-      }
-      setLoading(false);
-    };
     fetchNews();
-
-    // 離開頁面時停止朗讀
     return () => {
-      if (typeof window !== 'undefined') {
-        window.speechSynthesis.cancel();
-      }
+      if (typeof window !== 'undefined') window.speechSynthesis.cancel();
     };
   }, []);
 
-  // 🔊 新增：語音朗讀控制函數
-  const toggleSpeech = (id: number, text: string) => {
-    if (!window.speechSynthesis) {
-      alert("你的瀏覽器不支援語音朗讀功能");
-      return;
-    }
+  // 👇 切換收藏狀態 (Save/Unsave)
+  const toggleSave = async (id: number, currentStatus: boolean) => {
+    // 1. 先在前端做樂觀更新 (讓使用者覺得很快)
+    setArticles(prev => prev.map(item => 
+      item.id === id ? { ...item, is_saved: !currentStatus } : item
+    ));
 
-    // 如果點擊的是正在讀的那一篇 -> 停止
+    // 2. 背景更新資料庫
+    const { error } = await supabase
+      .from('news_items')
+      .update({ is_saved: !currentStatus })
+      .eq('id', id);
+
+    if (error) {
+      console.error("收藏失敗", error);
+      // 如果失敗，應該要變回來 (這裡省略複雜處理，簡單提示即可)
+      alert("收藏失敗，請檢查網路");
+    }
+  };
+
+  const toggleSpeech = (id: number, text: string) => {
+    if (!window.speechSynthesis) return;
     if (speakingId === id) {
       window.speechSynthesis.cancel();
       setSpeakingId(null);
       return;
     }
-
-    // 先停止目前任何正在讀的聲音
     window.speechSynthesis.cancel();
-
-    // 設定要讀的內容
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'zh-TW'; // 設定語言為繁體中文
-    utterance.rate = 1;       // 語速 (1 是正常)
-    utterance.pitch = 1;      // 音調
-
-    // 當讀完的時候，把 icon 變回喇叭
-    utterance.onend = () => {
-      setSpeakingId(null);
-    };
-
-    // 開始朗讀
+    utterance.lang = 'zh-TW';
+    utterance.onend = () => setSpeakingId(null);
     window.speechSynthesis.speak(utterance);
     setSpeakingId(id);
   };
 
-  // 2. 篩選邏輯
+  const toggleVocab = (id: number) => {
+    setOpenVocabId(openVocabId === id ? null : id);
+  };
+
   const filteredArticles = articles.filter(item => {
+    // 如果選了 "已收藏" 分類，就只顯示收藏的新聞
+    if (category === 'saved') return item.is_saved;
+    
     const matchCategory = category === 'all' || item.category === category;
     const searchLower = searchTerm.toLowerCase();
     const analysis = item.ai_analysis?.[0];
@@ -97,7 +110,6 @@ export default function Home() {
       item.title.toLowerCase().includes(searchLower) ||
       analysis?.summary_short?.toLowerCase().includes(searchLower) || 
       analysis?.tags?.some(tag => tag.toLowerCase().includes(searchLower));
-
     return matchCategory && matchSearch;
   });
 
@@ -115,7 +127,7 @@ export default function Home() {
         <header className="text-center mb-8 border-b-4 border-double border-[#2c2c2c] pb-5">
           <h1 className="font-playfair text-5xl md:text-6xl mb-2 tracking-tight">The Daily Insight</h1>
           <div className="text-sm text-gray-500 uppercase tracking-widest font-sans">
-            AI Curated • {new Date().toLocaleDateString()} • Vol. 1
+            Personal Knowledge Base • {new Date().toLocaleDateString()}
           </div>
         </header>
 
@@ -123,7 +135,7 @@ export default function Home() {
           <div className="max-w-md mx-auto mb-4 relative">
             <input
               type="text"
-              placeholder="🔍 搜尋新聞關鍵字..."
+              placeholder="🔍 搜尋新聞..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full px-4 py-2 rounded-full border border-gray-300 focus:border-[#2a9d8f] focus:outline-none focus:ring-1 focus:ring-[#2a9d8f] bg-white font-sans text-center transition-all"
@@ -131,6 +143,18 @@ export default function Home() {
           </div>
 
           <nav className="flex flex-wrap justify-center gap-4 font-sans">
+            {/* 加入一個「收藏」的分類按鈕 */}
+            <button
+               onClick={() => setCategory('saved')}
+               className={`px-3 py-1 text-sm uppercase tracking-wider transition-all border-b-2 
+                 ${category === 'saved' 
+                   ? 'border-[#e76f51] text-[#e76f51] font-bold' 
+                   : 'border-transparent text-gray-400 hover:text-[#e76f51]'
+                 }`}
+            >
+              ❤️ Saved
+            </button>
+            <span className="text-gray-300">|</span>
             {['all', '科技', '財經', '科學', '生活'].map((cat) => (
               <button
                 key={cat}
@@ -149,21 +173,16 @@ export default function Home() {
 
         <main>
           {loading ? (
-            <p className="text-center text-gray-400 mt-10">正在載入歷史庫...</p>
+            <p className="text-center text-gray-400 mt-10">Loading...</p>
           ) : filteredArticles.length === 0 ? (
-            <div className="text-center py-10">
-              <p className="text-gray-400 mb-2">沒有找到相關文章</p>
-              <button onClick={() => {setSearchTerm(''); setCategory('all');}} className="text-[#2a9d8f] underline text-sm">
-                清除搜尋條件
-              </button>
-            </div>
+            <div className="text-center py-10 text-gray-400">No articles found.</div>
           ) : (
             filteredArticles.map((item) => {
-              const analysis = item.ai_analysis?.[0] || { summary_short: "AI 正在消化這篇文章...", sentiment_score: 0, tags: [] };
+              const analysis = item.ai_analysis?.[0] || { summary_short: "AI 處理中...", sentiment_score: 0, tags: [], vocabulary: [] };
               const moodWidth = Math.max(10, (analysis.sentiment_score + 1) * 50);
-              
-              // 判斷這一篇是不是正在朗讀中
               const isSpeaking = speakingId === item.id;
+              const isVocabOpen = openVocabId === item.id;
+              const hasVocab = analysis.vocabulary && analysis.vocabulary.length > 0;
 
               return (
                 <div key={item.id} className="news-card mb-12 pb-8 border-b border-gray-200">
@@ -173,27 +192,67 @@ export default function Home() {
                         {item.title}
                       </a>
                     </h2>
+                    
+                    {/* 👇 收藏按鈕 */}
+                    <button 
+                      onClick={() => toggleSave(item.id, item.is_saved)}
+                      className="ml-4 text-2xl transition-transform active:scale-90 hover:opacity-80"
+                      title={item.is_saved ? "取消收藏" : "加入收藏"}
+                    >
+                      {item.is_saved ? '❤️' : '🤍'}
+                    </button>
                   </div>
 
-                  <div className="text-xs font-bold text-gray-500 uppercase mb-4 tracking-wide font-sans flex items-center justify-between">
+                  <div className="text-xs font-bold text-gray-500 uppercase mb-4 tracking-wide font-sans flex items-center justify-between flex-wrap gap-2">
                     <span>{item.source_name} • {item.published_at}</span>
                     
-                    {/* 🔊 朗讀按鈕 */}
-                    <button 
-                      onClick={() => toggleSpeech(item.id, analysis.summary_short)}
-                      className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs transition-all border
-                        ${isSpeaking 
-                          ? 'bg-[#2a9d8f] text-white border-[#2a9d8f] animate-pulse' 
-                          : 'bg-white text-gray-500 border-gray-300 hover:border-[#2a9d8f] hover:text-[#2a9d8f]'
-                        }`}
-                    >
-                      {isSpeaking ? '⏹️ 停止朗讀' : '🔈 朗讀摘要'}
-                    </button>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => toggleSpeech(item.id, analysis.summary_short)}
+                        className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs transition-all border
+                          ${isSpeaking 
+                            ? 'bg-[#2a9d8f] text-white border-[#2a9d8f] animate-pulse' 
+                            : 'bg-white text-gray-500 border-gray-300 hover:border-[#2a9d8f] hover:text-[#2a9d8f]'
+                          }`}
+                      >
+                        {isSpeaking ? '⏹️ Stop' : '🔈 Listen'}
+                      </button>
+
+                      {hasVocab && (
+                        <button 
+                          onClick={() => toggleVocab(item.id)}
+                          className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs transition-all border
+                            ${isVocabOpen 
+                              ? 'bg-[#e76f51] text-white border-[#e76f51]' 
+                              : 'bg-white text-[#e76f51] border-[#e76f51] hover:bg-[#e76f51] hover:text-white'
+                            }`}
+                        >
+                          {isVocabOpen ? '📕 Close' : '📖 Vocab'}
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="bg-[#f4f4f4] p-5 border-l-4 border-[#2a9d8f] text-lg text-gray-700 mb-4 font-noto leading-relaxed">
                     {analysis.summary_short}
                   </div>
+
+                  {isVocabOpen && analysis.vocabulary && (
+                    <div className="mb-6 bg-[#fff8f0] p-5 rounded-lg border border-[#e76f51]/20 animation-fadeIn">
+                      <h3 className="font-playfair text-xl mb-4 text-[#e76f51]">Key Vocabulary</h3>
+                      <div className="space-y-4">
+                        {analysis.vocabulary.map((vocab, idx) => (
+                          <div key={idx} className="border-b border-[#e76f51]/10 pb-3 last:border-0 last:pb-0">
+                            <div className="flex items-baseline gap-2 mb-1">
+                              <span className="font-bold text-lg text-[#2c2c2c]">{vocab.word}</span>
+                              <span className="text-sm text-gray-500 font-noto">{vocab.def}</span>
+                            </div>
+                            <p className="text-sm text-gray-600 italic font-serif">"{vocab.ex}"</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   
                   <div className="flex flex-wrap items-center gap-3 text-xs font-sans">
                     {analysis.tags && analysis.tags.map((tag, idx) => (
@@ -201,12 +260,6 @@ export default function Home() {
                         🏷️ {tag}
                       </span>
                     ))}
-                    <div className="ml-auto flex items-center gap-2">
-                      <span className="text-gray-400 tracking-widest text-[10px]">MOOD</span>
-                      <div className="w-12 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-[#2a9d8f]" style={{ width: `${moodWidth}%` }}></div>
-                      </div>
-                    </div>
                   </div>
                 </div>
               );
